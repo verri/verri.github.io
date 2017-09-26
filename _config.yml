@@ -1,1 +1,33 @@
-theme: jekyll-theme-minimal
+name: Filipe Verri
+description: PhD Candidate in Computer Science at University of Sao Paulo
+url: http://verri.github.io
+avatar: http://github.com/verri.png
+
+footer-links:
+  github: verri
+  rss: rss
+
+disqus: verri
+google_analytics: UA-107075176-1
+
+permalink: /:title/
+version: v1.2.0
+
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge
+  syntax_highlighter_opts:
+    css_class: 'highlight'
+
+sass:
+  style: :compressed
+
+plugins:
+  - jekyll-sitemap
+  - jekyll-feed
+
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - LICENSE
+  - CNAME
