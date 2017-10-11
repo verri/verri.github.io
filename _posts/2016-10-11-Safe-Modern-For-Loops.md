@@ -68,6 +68,33 @@ For a better review, I suggest reading [this page](http://en.cppreference.com/w/
 
 ## Problem: Value range
 
+Now, let's discuss the bad habits that I have seen. Imagine we want to iterate
+over a vector and call an user-defined function that receives both the index
+and the value at that position.  A faulty solution would be
+```cpp
+template <typename T, typename F>
+void my_solution(const std::vector<T>& values, const F& f) {
+  for (int i = 0; i < values.size(); ++i)
+    f(i, values[i]);
+```
+
+Can you spot the bug? Many of us are so used to iterate using `int`s that we
+forget that it can't represent all possible index values.
+The problem lays in the fact that most likely
+```cpp
+std::numeric_limits<int>::max() < std::numeric_limits<typename std::vector<T>::size_type>::max()
+```
+
+`std::vector<T>::size_type` is the type that can hold any index or size of vectors.
+Although many implementations use `std::size_t`, there is no such guarantee.
+Thus, a better generic solution is
+```cpp
+template <typename T, typename F>
+void my_solution(const std::vector<T>& values, const F& f) {
+  for (typename std::vector<T>::size_type i = 0; i < values.size(); ++i)
+    f(i, values[i]);
+```
+
 ## Problem: Iterating two containers
 
 ## Solution: cool::indices utility
