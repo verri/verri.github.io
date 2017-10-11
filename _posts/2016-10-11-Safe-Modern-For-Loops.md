@@ -69,7 +69,7 @@ For a better review, I suggest reading [this page](http://en.cppreference.com/w/
 ## Problem: Value range
 
 Now, let's discuss the bad habits that I have seen. Imagine we want to iterate
-over a vector and call an user-defined function that receives both the index
+over a vector and call a user-defined function that receives both the index
 and the value at that position.  A faulty solution would be
 ```cpp
 template <typename T, typename F>
@@ -135,8 +135,8 @@ doesn't compile since `++i` and `++j` tries to modify the variables.
 
 ## Solution: cool::indices utility
 
-By using range-based for loops, [cool](https://github.com/verri/cool) provides an
-utility that solve the two mentioned problems.  The function `cool::indices(n, m)`
+By using range-based for loops, [cool](https://github.com/verri/cool) provides a
+utility that solves the two mentioned problems.  The function `cool::indices(n, m)`
 creates a lazy-evaluated list of indices in the interval $[n, m)$ whose type is
 big enough to hold `m` and `n` (or their own type if they have the same type.)
 If only one value is provided, that is `cool::indices(m)` is called, the
@@ -155,5 +155,5 @@ which has several advantages:
 
 - `i` and `j` have type `std::vector<T>::size_type` without explicitly writing so;
 - the compiler would emit an error if one tries to modify `i` and `j`; and
-- there are much less occurrences of the variables (no explicit comparison and
+- there are much fewer occurrences of the variables (no explicit comparison and
   increment), reducing the chances of mistyping.
