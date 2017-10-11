@@ -29,8 +29,45 @@ is translated to
 }
 ```
 
+Thus, we can call an arbitrary function `do_something` for each integer between
+0 (inclusive) and 10 (non-inclusive) by using
+```cpp
+for (int i = 0; i < 10; ++i)
+  do_something(i);
+```
+
+We can also use for loops to iterate over containers.
+
+```cpp
+std::vector<int> values( /* ... */ );
+
+for (typename std::vector<int>::iterator it = values.begin();
+     it != values.end();
+     ++it)
+{
+  do_something(*it);
+}
+```
+
+For a better review, I suggest reading [this page](http://en.cppreference.com/w/cpp/language/for).
+
 ## C++11 range-based for loops
+
+Modern C++ revisions (after C++11) bring a much better way to iterate over
+containers: the range-based for loops.
+
+The last piece of code is equivalent to
+```cpp
+std::vector<int> values( /* ... */ );
+
+for (int i : values)
+  do_something(i);
+```
+
+For a better review, I suggest reading [this page](http://en.cppreference.com/w/cpp/language/range-for).
+
+## Problem: Value range
 
 ## Problem: Iterating two containers
 
-## Solution: Iterating two containers
+## Solution: cool::indices utility
