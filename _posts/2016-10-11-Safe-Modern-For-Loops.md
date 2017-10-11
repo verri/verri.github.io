@@ -76,6 +76,7 @@ template <typename T, typename F>
 void my_solution(const std::vector<T>& values, const F& f) {
   for (int i = 0; i < values.size(); ++i)
     f(i, values[i]);
+}
 ```
 
 Can you spot the bug? Many of us are so used to iterate using `int`s that we
@@ -93,8 +94,66 @@ template <typename T, typename F>
 void my_solution(const std::vector<T>& values, const F& f) {
   for (typename std::vector<T>::size_type i = 0; i < values.size(); ++i)
     f(i, values[i]);
+}
 ```
 
 ## Problem: Iterating two containers
 
+Another problem that can happen is regarding the const-correctness of the indices.
+It doesn't come exactly from a bad habit, but from a limitation in the traditional
+for loop.
+
+Consider the same situation as before, but now we want to have a callback for
+every combination of values in two containers.  Based on what we have discussed,
+a common mistake is
+```cpp
+template <typename T, typename F>
+void my_solution(const std::vector<T>& a, const std::vector<T>& b, const F& f) {
+  for (typename std::vector<T>::size_type i = 0; i < a.size(); ++i)
+    for (typename std::vector<T>::size_type j = 0; j < b.size(); ++i)
+      f(i, j, a[i], b[j]);
+}
+```
+
+In the second for loop, instead of incrementing `j` we increment `i` causing
+a bug that is often hard to detect. A possible cause of the problem here is that
+variables have no meaningful name.  However, it is so common to iterate using
+variables called `i` and `j` that long meaningful names would be awkward.
+
+An ideal solution would forbid modifications of the iteration variable inside the
+for loop.  Thus, if we tried to modify the variable `i` in the second loop, a compiler
+error would be emitted. However, just using `const` is not enough.  The code
+```cpp
+template <typename T, typename F>
+void my_solution(const std::vector<T>& a, const std::vector<T>& b, const F& f) {
+  for (const typename std::vector<T>::size_type i = 0; i < a.size(); ++i)
+    for (const typename std::vector<T>::size_type j = 0; j < b.size(); ++j)
+      f(i, j, a[i], b[j]);
+}
+```
+doesn't compile since `++i` and `++j` tries to modify the variables.
+
 ## Solution: cool::indices utility
+
+By using range-based for loops, [cool](https://github.com/verri/cool) provides an
+utility that solve the two mentioned problems.  The function `cool::indices(n, m)`
+creates a lazy-evaluated list of indices in the interval $[n, m)$ whose type is
+big enough to hold `m` and `n` (or their own type if they have the same type.)
+If only one value is provided, that is `cool::indices(m)` is called, the
+range goes from 0 (inclusive) to `n` (exclusive.)
+
+That brings the solution
+```cpp
+template <typename T, typename F>
+void my_solution(const std::vector<T>& a, const std::vector<T>& b, const F& f) {
+  for (const auto i : cool::indices(a.size()))
+    for (const auto j : cool::indices(b.size()))
+      f(i, j, a[i], b[j]);
+}
+```
+which has several advantages:
+
+- `i` and `j` have type `std::vector<T>::size_type` without explicitly writing so;
+- the compiler would emit an error if one tries to modify `i` and `j`; and
+- there are much less occurrences of the variables (no explicit comparison and
+  increment), reducing the chances of mistyping.
