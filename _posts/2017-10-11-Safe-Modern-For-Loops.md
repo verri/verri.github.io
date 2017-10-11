@@ -137,7 +137,7 @@ doesn't compile since `++i` and `++j` tries to modify the variables.
 
 By using range-based for loops, [cool](https://github.com/verri/cool) provides a
 utility that solves the two mentioned problems.  The function `cool::indices(n, m)`
-creates a lazy-evaluated list of indices in the interval $[n, m)$ whose type is
+creates a lazy-evaluated list of indices in the interval $$[n, m)$$ whose type is
 big enough to hold `m` and `n` (or their own type if they have the same type.)
 If only one value is provided, that is `cool::indices(m)` is called, the
 range goes from 0 (inclusive) to `n` (exclusive.)
