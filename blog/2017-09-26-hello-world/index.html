@@ -1,0 +1,36 @@
+<!doctype html><html lang><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1,shrink-to-fit=no"><title>Hello World!</title><meta name=description content="Filipe Verri is a researcher and professor at the Aeronautics Institute of Technology."><meta name=author content='Filipe Verri'><link href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@400;700&display=swap" rel=stylesheet><link rel=stylesheet href=https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.2/css/bootstrap.min.css integrity="sha512-rt/SrQ4UNIaGfDyEXZtNcyWvQeOq0QLygHluFQcSjaGB04IxWhal71tKuzP6K8eYXYB6vJV4pHkXcmFGGQ1/0w==" crossorigin=anonymous referrerpolicy=no-referrer><link rel=stylesheet href=https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css integrity="sha512-Evv84Mr4kqVGRNSgIGL/F/aIDqQb7xQ2vcrdIwxfjThSH8CSR7PBEakCr51Ck+w+/U6swU2Im1vVX0SVk9ABhg==" crossorigin=anonymous referrerpolicy=no-referrer><link rel=stylesheet href=https://cdnjs.cloudflare.com/ajax/libs/academicons/1.9.3/css/academicons.min.css integrity="sha512-vaoopdl+FJahyY2ddhsbDj8yDiRuyUYH/vIjF3z+cBg0sKc07NAQmUYli8volCGlW9OwlQyjVsr7Lh6qAManlw==" crossorigin=anonymous referrerpolicy=no-referrer><link rel=stylesheet href=/sass/researcher.min.css><link rel=stylesheet href=/css/syntax.css><link rel=icon type=image/ico href=https://verri.github.io/favicon.ico><script async src="https://www.googletagmanager.com/gtag/js?id=G-GE8S9ECL6D"></script><script>var dnt=navigator.doNotTrack||window.doNotTrack||navigator.msDoNotTrack,doNotTrack=dnt=="1"||dnt=="yes";if(!doNotTrack){window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag("js",new Date),gtag("config","G-GE8S9ECL6D")}</script></head><body><div class="container mt-5"><nav class="navbar navbar-expand-sm flex-column flex-sm-row text-nowrap p-0"><a class="navbar-brand mx-0 mr-sm-auto" href=https://verri.github.io/ title="Filipe Verri">Filipe Verri</a><div class="navbar-nav flex-row flex-wrap justify-content-center"><a class="nav-item nav-link" href=/books title=Book>Book
+</a><span class="nav-item navbar-text mx-1">/</span>
+<a class="nav-item nav-link" href=/publications title=Publications>Publications
+</a><span class="nav-item navbar-text mx-1">/</span>
+<a class="nav-item nav-link" href=/blog title=Blog>Blog</a></div></nav></div><hr><div id=content><div class=container><p>Since I started researching on machine learning and dynamical systems,
+I have been developing several utility libraries.
+Most of them are written in modern C++ because of its flexibility and performance.</p><p>In this blog, I intend to write my thoughts on machine learning and C++ programming.
+Specifically, I will discuss the motivation and the design decisions of the C++ libraries I have been developing:
+<a href=https://github.com/verri/jules target=_blank rel=noopener>Jules</a> and <a href=https://github.com/verri/cool target=_blank rel=noopener>Cool</a>.</p><h2 id=jules>Jules</h2><p>Without question, <em>Jules</em> is my favorite.</p><p>I started writing it to overcome several inconveniences I had with other frameworks.
+My first research experiments (back in 2011) were written in Matlab.
+At the time, speed and flexibility were not a problem, since the problems were simple.
+Then, at some point, I decided to try R.
+I liked the flexibility and the huge amount of available packages which drastically increased my productivity.
+However, at the beginning of my PhD, I had many problems with the hard maintenance of code.
+Every time I would update R, I would need to make few (but annoying) changes in the code because of the many dependencies I had.
+Since I wasn&rsquo;t happy with the performance either and
+I had just finished reading <a href=http://www.stroustrup.com/4th.html target=_blank rel=noopener>the 4th edition of The C++ Programming Language</a>,
+I decided to write my own framework to deal with statistical programming using modern C++.</p><p>Most of my studies comprise only some kind of dynamical system simulation,
+thus a library with basic array manipulation and statistical utilities (sum, mean, standard deviation, etc) would suffice.
+There are some other C++ libraries out there that provide such functionalities.
+<a href=https://bitbucket.org/blaze-lib/blaze target=_blank rel=noopener>Blaze</a> and <a href="http://eigen.tuxfamily.org/index.php?title=Main_Page" target=_blank rel=noopener>Eigen</a> are
+good examples.
+However, I had some reasons to create <em>yet another (TM)</em> library:</p><ul><li><em>Modern C++</em>. Jules is not intended to work in old compilers, so I can use the most recent features of C++.</li><li><em>Productivity over speed</em>. Most of the related C++ libraries are blazing fast and highly configurable,
+but they are hard to learn and decrease a lot your productivity. Jules, in the contrary, aims at
+being simple and intuitive, without many configuration options. Moreover, it is header-only, which
+should help integration in your project.
+<strong>Besides Jules focusing in flexibility and simplicity, it doesn&rsquo;t mean that it is slow.</strong>
+Soon, I should run some benchmarks and post them here.</li></ul><p><a href=https://github.com/jimmyskull target=_blank rel=noopener>Paulo Urio</a> and I started writing it in June 2015.
+Since then, the library has been evolving in a good pace, taking it in mind that there are only 2 contributors.
+The library is not stable yet, but I have been using it in every one of my projects.
+Most of the features I have implemented are directly connected with my needs,
+but if you intend to use it and need some feature, <a href=https://github.com/verri/jules/issues target=_blank rel=noopener>fill an issue</a> that
+I will gladly try to implement it.</p><p>I will eventually blog about Jules and its usage.</p><h2 id=cool>Cool</h2><p>One problem that I have every time I start a new project is that I see myself reimplementing some simple
+functionalities. Instead of doing so, or using <a href=http://www.boost.org/ target=_blank rel=noopener>Boost</a>, I decided to aggregate
+many simple tools into a single project. <em>Cool</em> aims at providing:</p><ul><li><em>Easy integration</em>: Every functionality is implemented in a single header file with just a couple hundred lines.</li><li><em>Productivity over flexibility</em>: Unlike Boost, utilities are not heavily templated or configurable.</li></ul><p>Many of my posts here will discuss the rationale and the design decisions of the parts of Cool.
+I will focus on the usage of modern C++ features.</p></div></div><div id=footer class=mb-5><hr><div class="container text-center"><a href=https://github.com/ojroques/hugo-researcher title="Template by Olivier Roques"><small>Template by Olivier Roques</small></a></div></div></body></html>
