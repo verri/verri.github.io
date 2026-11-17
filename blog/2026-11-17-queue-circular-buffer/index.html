@@ -26,7 +26,7 @@ queue. Instead, we store where the front currently is, and let the queue
 </span></span><span class=line><span class=cl>                   ^ begin = 3, size = 3
 </span></span></code></pre></div><p>And the same queue after a few enqueues and dequeues pushed it past the end:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-text data-lang=text><span class=line><span class=cl>index: 0   1   2   3   4   5   6   7
 </span></span><span class=line><span class=cl>       [e₂][e₃][  ][  ][  ][  ][  ][e₁]
-</span></span><span class=line><span class=cl>                                        ^ begin = 7, size = 3
+</span></span><span class=line><span class=cl>                                   ^ begin = 7, size = 3
 </span></span></code></pre></div><p>Both are valid. To find the <em>i</em>-th element of the queue, we compute its
 physical position with a modulo:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-text data-lang=text><span class=line><span class=cl>position(i) = (begin + i) mod capacity
 </span></span></code></pre></div><p>The front is at <code>position(0)</code>, the next free slot is at <code>position(size)</code>.
