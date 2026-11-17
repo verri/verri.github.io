@@ -41,7 +41,6 @@ Nothing ever shifts.</p><h2 id=the-class>The class</h2><div class=highlight><pre
 </span></span><span class=line><span class=cl>
 </span></span><span class=line><span class=cl>  <span class=kt>void</span> <span class=nf>enqueue</span><span class=p>(</span><span class=n>T</span><span class=p>);</span>
 </span></span><span class=line><span class=cl>  <span class=k>auto</span> <span class=nf>dequeue</span><span class=p>()</span> <span class=o>-&gt;</span> <span class=n>T</span><span class=p>;</span>
-</span></span><span class=line><span class=cl>  <span class=na>[[nodiscard]]</span> <span class=k>auto</span> <span class=n>front</span><span class=p>()</span> <span class=o>-&gt;</span> <span class=n>T</span><span class=o>&amp;</span><span class=p>;</span>
 </span></span><span class=line><span class=cl>  <span class=na>[[nodiscard]]</span> <span class=k>auto</span> <span class=n>front</span><span class=p>()</span> <span class=k>const</span> <span class=o>-&gt;</span> <span class=k>const</span> <span class=n>T</span><span class=o>&amp;</span><span class=p>;</span>
 </span></span><span class=line><span class=cl>  <span class=na>[[nodiscard]]</span> <span class=k>auto</span> <span class=n>is_empty</span><span class=p>()</span> <span class=k>const</span> <span class=k>noexcept</span> <span class=o>-&gt;</span> <span class=kt>bool</span><span class=p>;</span>
 </span></span><span class=line><span class=cl>
@@ -123,18 +122,12 @@ compilers elide here, and moves rarely throw. In exchange we get a queue that
 works with move-only types such as <code>std::unique_ptr</code> and a one-step
 <code>auto x = q.dequeue();</code>. Other designs made the same call: Rust&rsquo;s
 <code>pop_front</code>, and concurrent queues, where a separate <code>front()</code> and <code>pop()</code>
-would race against other threads.</p><p><code>front</code> comes in two flavors, as in every standard container: the <code>const</code> one
-reads, the non-<code>const</code> one lets the caller modify the element in place. To
-avoid writing the empty check twice, the non-<code>const</code> version delegates to the
-<code>const</code> one and casts the <code>const</code> away, which is safe because <code>*this</code> is not
-actually <code>const</code>. (C++23&rsquo;s explicit object parameter, &ldquo;deducing <code>this</code>&rdquo;,
-collapses the pair into a single definition; this series sticks to C++20.)
-<code>is_empty</code> is what you would expect:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-cpp data-lang=cpp><span class=line><span class=cl><span class=k>template</span> <span class=o>&lt;</span><span class=n>std</span><span class=o>::</span><span class=n>movable</span> <span class=n>T</span><span class=o>&gt;</span>
-</span></span><span class=line><span class=cl><span class=k>auto</span> <span class=n>Queue</span><span class=o>&lt;</span><span class=n>T</span><span class=o>&gt;::</span><span class=n>front</span><span class=p>()</span> <span class=o>-&gt;</span> <span class=n>T</span><span class=o>&amp;</span> <span class=p>{</span>
-</span></span><span class=line><span class=cl>  <span class=k>return</span> <span class=k>const_cast</span><span class=o>&lt;</span><span class=n>T</span><span class=o>&amp;&gt;</span><span class=p>(</span><span class=n>std</span><span class=o>::</span><span class=n>as_const</span><span class=p>(</span><span class=o>*</span><span class=k>this</span><span class=p>).</span><span class=n>front</span><span class=p>());</span>
-</span></span><span class=line><span class=cl><span class=p>}</span>
-</span></span><span class=line><span class=cl>
-</span></span><span class=line><span class=cl><span class=k>template</span> <span class=o>&lt;</span><span class=n>std</span><span class=o>::</span><span class=n>movable</span> <span class=n>T</span><span class=o>&gt;</span>
+would race against other threads.</p><p><code>front</code> only reads. Standard containers also offer a non-<code>const</code> overload
+that lets the caller modify the element in place, but we leave it out on
+purpose: once an element is in the queue, it is not modified. To change it,
+<code>dequeue</code> it and <code>enqueue</code> the new value. The queue keeps to the four
+operations in the table, and since <code>dequeue</code> hands the element back, that
+round trip is cheap. <code>is_empty</code> is what you would expect:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-cpp data-lang=cpp><span class=line><span class=cl><span class=k>template</span> <span class=o>&lt;</span><span class=n>std</span><span class=o>::</span><span class=n>movable</span> <span class=n>T</span><span class=o>&gt;</span>
 </span></span><span class=line><span class=cl><span class=k>auto</span> <span class=n>Queue</span><span class=o>&lt;</span><span class=n>T</span><span class=o>&gt;::</span><span class=n>front</span><span class=p>()</span> <span class=k>const</span> <span class=o>-&gt;</span> <span class=k>const</span> <span class=n>T</span><span class=o>&amp;</span> <span class=p>{</span>
 </span></span><span class=line><span class=cl>  <span class=k>if</span> <span class=p>(</span><span class=n>is_empty</span><span class=p>())</span>
 </span></span><span class=line><span class=cl>    <span class=k>throw</span> <span class=n>std</span><span class=o>::</span><span class=n>runtime_error</span><span class=p>{</span><span class=s>&#34;empty queue has no front&#34;</span><span class=p>};</span>
@@ -165,7 +158,8 @@ over, <em>unwrapping</em> them on the way so that the new queue starts at index 
 </span></span><span class=line><span class=cl>
 </span></span><span class=line><span class=cl>  <span class=k>for</span> <span class=p>(</span><span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>i</span> <span class=o>&lt;</span> <span class=n>size_</span><span class=p>;</span> <span class=o>++</span><span class=n>i</span><span class=p>)</span>
 </span></span><span class=line><span class=cl>    <span class=n>std</span><span class=o>::</span><span class=n>destroy_at</span><span class=p>(</span><span class=n>values_</span> <span class=o>+</span> <span class=n>wrap</span><span class=p>(</span><span class=n>begin_</span> <span class=o>+</span> <span class=n>i</span><span class=p>));</span>
-</span></span><span class=line><span class=cl>  <span class=n>alloc_</span><span class=p>.</span><span class=n>deallocate</span><span class=p>(</span><span class=n>values_</span><span class=p>,</span> <span class=n>capacity_</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=k>if</span> <span class=p>(</span><span class=n>values_</span><span class=p>)</span> <span class=c1>// deallocate only takes what allocate gave
+</span></span></span><span class=line><span class=cl>    <span class=n>alloc_</span><span class=p>.</span><span class=n>deallocate</span><span class=p>(</span><span class=n>values_</span><span class=p>,</span> <span class=n>capacity_</span><span class=p>);</span>
 </span></span><span class=line><span class=cl>
 </span></span><span class=line><span class=cl>  <span class=n>begin_</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span>
 </span></span><span class=line><span class=cl>  <span class=n>values_</span> <span class=o>=</span> <span class=n>buffer</span><span class=p>;</span>
@@ -185,10 +179,16 @@ half of the buffer is empty.</p><h2 id=the-destructor>The destructor</h2><div cl
 </span></span><span class=line><span class=cl><span class=n>Queue</span><span class=o>&lt;</span><span class=n>T</span><span class=o>&gt;::~</span><span class=n>Queue</span><span class=p>()</span> <span class=k>noexcept</span> <span class=p>{</span>
 </span></span><span class=line><span class=cl>  <span class=k>for</span> <span class=p>(</span><span class=n>std</span><span class=o>::</span><span class=n>size_t</span> <span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>i</span> <span class=o>&lt;</span> <span class=n>size_</span><span class=p>;</span> <span class=o>++</span><span class=n>i</span><span class=p>)</span>
 </span></span><span class=line><span class=cl>    <span class=n>std</span><span class=o>::</span><span class=n>destroy_at</span><span class=p>(</span><span class=n>values_</span> <span class=o>+</span> <span class=n>wrap</span><span class=p>(</span><span class=n>begin_</span> <span class=o>+</span> <span class=n>i</span><span class=p>));</span>
-</span></span><span class=line><span class=cl>  <span class=n>alloc_</span><span class=p>.</span><span class=n>deallocate</span><span class=p>(</span><span class=n>values_</span><span class=p>,</span> <span class=n>capacity_</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=k>if</span> <span class=p>(</span><span class=n>values_</span><span class=p>)</span> <span class=c1>// deallocate only takes what allocate gave
+</span></span></span><span class=line><span class=cl>    <span class=n>alloc_</span><span class=p>.</span><span class=n>deallocate</span><span class=p>(</span><span class=n>values_</span><span class=p>,</span> <span class=n>capacity_</span><span class=p>);</span>
 </span></span><span class=line><span class=cl><span class=p>}</span>
 </span></span></code></pre></div><p>Destroy the live objects (wrapped, again), then release the memory. Same
-invariant, last time.</p><h2 id=the-bug-that-copying-would-have-caused>The bug that copying would have caused</h2><p>Here is the version without the two <code>= delete</code> lines, and a two-line program:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-cpp data-lang=cpp><span class=line><span class=cl><span class=n>Queue</span><span class=o>&lt;</span><span class=n>std</span><span class=o>::</span><span class=n>string</span><span class=o>&gt;</span> <span class=n>a</span><span class=p>;</span>
+invariant, last time.</p><p>The <code>if (values_)</code> guard (also in <code>double_capacity</code>, for the first growth)
+covers a queue that never allocated. Unlike <code>delete</code>, which accepts a null
+pointer, <code>std::allocator::deallocate</code> requires a pointer that <code>allocate</code>
+returned. Passing <code>nullptr</code> usually works in practice, since the default
+allocator ends up in <code>operator delete</code>, which ignores null. But it breaks the
+allocator&rsquo;s contract, and nothing guarantees it works.</p><h2 id=the-bug-that-copying-would-have-caused>The bug that copying would have caused</h2><p>Here is the version without the two <code>= delete</code> lines, and a two-line program:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-cpp data-lang=cpp><span class=line><span class=cl><span class=n>Queue</span><span class=o>&lt;</span><span class=n>std</span><span class=o>::</span><span class=n>string</span><span class=o>&gt;</span> <span class=n>a</span><span class=p>;</span>
 </span></span><span class=line><span class=cl><span class=n>a</span><span class=p>.</span><span class=n>enqueue</span><span class=p>(</span><span class=s>&#34;x&#34;</span><span class=p>);</span>
 </span></span><span class=line><span class=cl><span class=k>auto</span> <span class=n>b</span> <span class=o>=</span> <span class=n>a</span><span class=p>;</span>   <span class=c1>// compiles!
 </span></span></span></code></pre></div><p>The compiler happily generates a copy constructor that copies the four
