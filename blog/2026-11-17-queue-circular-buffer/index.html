@@ -1,0 +1,212 @@
+<!doctype html><html lang><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1,shrink-to-fit=no"><title>A queue on a circular buffer, in modern C++ | Filipe Verri</title><meta name=description content="Filipe Verri is a computer scientist working on machine learning and LLM agents, founding Scientific Director of Instituto Curvelo, and professor at ITA/Unifesp."><meta name=author content='Filipe Verri'><link href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@400;700&display=swap" rel=stylesheet><link rel=stylesheet href=https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.2/css/bootstrap.min.css integrity="sha512-rt/SrQ4UNIaGfDyEXZtNcyWvQeOq0QLygHluFQcSjaGB04IxWhal71tKuzP6K8eYXYB6vJV4pHkXcmFGGQ1/0w==" crossorigin=anonymous referrerpolicy=no-referrer><link rel=stylesheet href=https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css integrity="sha512-Evv84Mr4kqVGRNSgIGL/F/aIDqQb7xQ2vcrdIwxfjThSH8CSR7PBEakCr51Ck+w+/U6swU2Im1vVX0SVk9ABhg==" crossorigin=anonymous referrerpolicy=no-referrer><link rel=stylesheet href=https://cdnjs.cloudflare.com/ajax/libs/academicons/1.9.3/css/academicons.min.css integrity="sha512-vaoopdl+FJahyY2ddhsbDj8yDiRuyUYH/vIjF3z+cBg0sKc07NAQmUYli8volCGlW9OwlQyjVsr7Lh6qAManlw==" crossorigin=anonymous referrerpolicy=no-referrer><link rel=stylesheet href=/sass/researcher.min.css><link rel=stylesheet href=/css/syntax.css><link rel=icon type=image/ico href=https://verri.github.io/favicon.ico><script async src="https://www.googletagmanager.com/gtag/js?id=G-GE8S9ECL6D"></script><script>var dnt=navigator.doNotTrack||window.doNotTrack||navigator.msDoNotTrack,doNotTrack=dnt=="1"||dnt=="yes";if(!doNotTrack){window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag("js",new Date),gtag("config","G-GE8S9ECL6D")}</script></head><body><div class="container mt-5"><nav class="navbar navbar-expand-sm flex-column flex-sm-row text-nowrap p-0"><a class="navbar-brand mx-0 mr-sm-auto" href=https://verri.github.io/ title="Filipe Verri">Filipe Verri</a><div class="navbar-nav flex-row flex-wrap justify-content-center"><a class="nav-item nav-link" href=/books title=Books>Books
+</a><span class="nav-item navbar-text mx-1">/</span>
+<a class="nav-item nav-link" href=/publications title=Publications>Publications
+</a><span class="nav-item navbar-text mx-1">/</span>
+<a class="nav-item nav-link" href=/indicators title=Indicators>Indicators
+</a><span class="nav-item navbar-text mx-1">/</span>
+<a class="nav-item nav-link" href=/students title=Alumni>Alumni
+</a><span class="nav-item navbar-text mx-1">/</span>
+<a class="nav-item nav-link" href=/blog title=Blog>Blog</a></div></nav></div><hr><div id=content><div class=container><p><em>This post is part of a series on implementing classic data structures in
+modern C++ (C++20), without <code>new</code>/<code>delete</code> scattered around and with the
+sanitizers watching every step. The code lives in
+<a href=https://github.com/verri/collections101 target=_blank rel=noopener>collections101</a>.</em></p><p>A queue is the data structure of waiting lines: the first element in is the
+first one out (FIFO). It shows up everywhere, from task schedulers to
+breadth-first search. Its interface is tiny:</p><table><thead><tr><th>Operation</th><th>What it does</th></tr></thead><tbody><tr><td><code>enqueue</code></td><td>inserts an element at the back</td></tr><tr><td><code>dequeue</code></td><td>removes the element at the front</td></tr><tr><td><code>front</code></td><td>reads the element at the front</td></tr><tr><td><code>is_empty</code></td><td>tells whether there is anything in it</td></tr></tbody></table><p>When we restrict ourselves to these four operations, we can implement a queue on (at least
+amortized) constant time. The restriction is the point: a queue cannot do much, and in
+exchange it can do it fast and communicate intent clearly.</p><h2 id=the-naive-array-and-why-it-fails>The naive array, and why it fails</h2><p>The obvious approach is to keep the elements in an array, append at the end,
+and remove from the beginning. Appending is cheap. Removing from the
+beginning is not: every remaining element must shift one position to the left,
+which costs <em>O(n)</em>. Reversing the roles just moves the problem to <code>enqueue</code>.</p><p>A linked list solves this (keep a pointer to the first and to the last node),
+and it is a fine implementation. But each element pays for a pointer and a
+separate allocation, and walking the nodes jumps around in memory. Can we keep
+the contiguous array and still get <em>O(1)</em> at both ends?</p><h2 id=dont-move-the-elements-move-the-indices>Don&rsquo;t move the elements, move the indices</h2><p>The trick is to stop treating position 0 of the array as the front of the
+queue. Instead, we store where the front currently is, and let the queue
+<em>wrap around</em> the end of the array as if the memory were a circle.</p><p>Here is a queue (e₁, e₂, e₃) in an array of capacity 8, sitting in the middle:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-text data-lang=text><span class=line><span class=cl>index: 0   1   2   3   4   5   6   7
+</span></span><span class=line><span class=cl>       [  ][  ][  ][e₁][e₂][e₃][  ][  ]
+</span></span><span class=line><span class=cl>                   ^ begin = 3, size = 3
+</span></span></code></pre></div><p>And the same queue after a few enqueues and dequeues pushed it past the end:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-text data-lang=text><span class=line><span class=cl>index: 0   1   2   3   4   5   6   7
+</span></span><span class=line><span class=cl>       [e₂][e₃][  ][  ][  ][  ][  ][e₁]
+</span></span><span class=line><span class=cl>                                        ^ begin = 7, size = 3
+</span></span></code></pre></div><p>Both are valid. To find the <em>i</em>-th element of the queue, we compute its
+physical position with a modulo:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-text data-lang=text><span class=line><span class=cl>position(i) = (begin + i) mod capacity
+</span></span></code></pre></div><p>The front is at <code>position(0)</code>, the next free slot is at <code>position(size)</code>.
+Dequeuing just advances <code>begin</code>; enqueuing writes at <code>position(size)</code>.
+Nothing ever shifts.</p><h2 id=the-class>The class</h2><div class=highlight><pre tabindex=0 class=chroma><code class=language-cpp data-lang=cpp><span class=line><span class=cl><span class=k>template</span> <span class=o>&lt;</span><span class=n>std</span><span class=o>::</span><span class=n>movable</span> <span class=n>T</span><span class=o>&gt;</span>
+</span></span><span class=line><span class=cl><span class=k>class</span> <span class=nc>Queue</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl><span class=k>public</span><span class=o>:</span>
+</span></span><span class=line><span class=cl>  <span class=n>Queue</span><span class=p>()</span> <span class=o>=</span> <span class=k>default</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=n>Queue</span><span class=p>(</span><span class=k>const</span> <span class=n>Queue</span><span class=o>&amp;</span><span class=p>)</span> <span class=o>=</span> <span class=k>delete</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=k>auto</span> <span class=k>operator</span><span class=o>=</span><span class=p>(</span><span class=k>const</span> <span class=n>Queue</span><span class=o>&amp;</span><span class=p>)</span> <span class=o>-&gt;</span> <span class=n>Queue</span><span class=o>&amp;</span> <span class=o>=</span> <span class=k>delete</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=o>~</span><span class=n>Queue</span><span class=p>()</span> <span class=k>noexcept</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=kt>void</span> <span class=nf>enqueue</span><span class=p>(</span><span class=n>T</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=k>auto</span> <span class=nf>dequeue</span><span class=p>()</span> <span class=o>-&gt;</span> <span class=n>T</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=na>[[nodiscard]]</span> <span class=k>auto</span> <span class=n>front</span><span class=p>()</span> <span class=o>-&gt;</span> <span class=n>T</span><span class=o>&amp;</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=na>[[nodiscard]]</span> <span class=k>auto</span> <span class=n>front</span><span class=p>()</span> <span class=k>const</span> <span class=o>-&gt;</span> <span class=k>const</span> <span class=n>T</span><span class=o>&amp;</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=na>[[nodiscard]]</span> <span class=k>auto</span> <span class=n>is_empty</span><span class=p>()</span> <span class=k>const</span> <span class=k>noexcept</span> <span class=o>-&gt;</span> <span class=kt>bool</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=k>private</span><span class=o>:</span>
+</span></span><span class=line><span class=cl>  <span class=kt>void</span> <span class=n>double_capacity</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>  <span class=k>auto</span> <span class=nf>wrap</span><span class=p>(</span><span class=n>std</span><span class=o>::</span><span class=n>size_t</span><span class=p>)</span> <span class=k>const</span> <span class=k>noexcept</span> <span class=o>-&gt;</span> <span class=n>std</span><span class=o>::</span><span class=n>size_t</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=na>[[no_unique_address]]</span> <span class=n>std</span><span class=o>::</span><span class=n>allocator</span><span class=o>&lt;</span><span class=n>T</span><span class=o>&gt;</span> <span class=n>alloc_</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=n>T</span><span class=o>*</span> <span class=n>values_</span> <span class=o>=</span> <span class=k>nullptr</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=n>std</span><span class=o>::</span><span class=n>size_t</span> <span class=n>begin_</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=n>std</span><span class=o>::</span><span class=n>size_t</span> <span class=n>size_</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=n>std</span><span class=o>::</span><span class=n>size_t</span> <span class=n>capacity_</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=p>};</span>
+</span></span></code></pre></div><p>A few things worth noticing:</p><ul><li><code>std::movable T</code> is a C++20 concept: we only accept element types that can
+be moved (and destroyed). A bad element type fails at the declaration, with
+a readable error, instead of deep inside a template instantiation.</li><li>We keep a <code>std::allocator&lt;T></code> member. We need to <em>allocate memory</em>
+without <em>constructing objects</em> in it: the array has <code>capacity_</code> slots, but
+only <code>size_</code> of them hold live objects. <code>new T[n]</code> would construct all <code>n</code>.</li><li><code>std::allocator</code> has no state, but an ordinary empty member still occupies
+at least one byte (eight, after padding). The C++20 attribute
+<code>[[no_unique_address]]</code> lets the compiler give it no storage at all. Older
+code got the same effect by inheriting privately from the allocator (the
+<em>empty base optimization</em>), which also dumps names like <code>allocate</code> and
+<code>value_type</code> into the class; the attribute keeps it a plain member.</li><li>Apart from the allocator, the state is four numbers: the buffer, where the
+queue begins, how many elements it has, and how many fit. There is no &ldquo;end&rdquo;
+pointer; it is <code>begin_ + size_</code>, wrapped.</li><li>Copying is deleted. We will come back to that, because it is the most
+instructive bug in this post.</li></ul><p>The mapping from logical to physical index is one line:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-cpp data-lang=cpp><span class=line><span class=cl><span class=k>template</span> <span class=o>&lt;</span><span class=n>std</span><span class=o>::</span><span class=n>movable</span> <span class=n>T</span><span class=o>&gt;</span>
+</span></span><span class=line><span class=cl><span class=k>auto</span> <span class=n>Queue</span><span class=o>&lt;</span><span class=n>T</span><span class=o>&gt;::</span><span class=n>wrap</span><span class=p>(</span><span class=n>std</span><span class=o>::</span><span class=n>size_t</span> <span class=n>i</span><span class=p>)</span> <span class=k>const</span> <span class=k>noexcept</span> <span class=o>-&gt;</span> <span class=n>std</span><span class=o>::</span><span class=n>size_t</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=k>return</span> <span class=n>i</span> <span class=o>%</span> <span class=n>capacity_</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></div><h2 id=the-operations>The operations</h2><p><code>enqueue</code> grows the buffer when it is full, then <em>constructs</em> the new element
+in the first free slot with <code>std::construct_at</code>:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-cpp data-lang=cpp><span class=line><span class=cl><span class=k>template</span> <span class=o>&lt;</span><span class=n>std</span><span class=o>::</span><span class=n>movable</span> <span class=n>T</span><span class=o>&gt;</span>
+</span></span><span class=line><span class=cl><span class=kt>void</span> <span class=n>Queue</span><span class=o>&lt;</span><span class=n>T</span><span class=o>&gt;::</span><span class=n>enqueue</span><span class=p>(</span><span class=n>T</span> <span class=n>value</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=k>if</span> <span class=p>(</span><span class=n>size_</span> <span class=o>==</span> <span class=n>capacity_</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>    <span class=n>double_capacity</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>  <span class=n>std</span><span class=o>::</span><span class=n>construct_at</span><span class=p>(</span><span class=n>values_</span> <span class=o>+</span> <span class=n>wrap</span><span class=p>(</span><span class=n>begin_</span> <span class=o>+</span> <span class=n>size_</span><span class=p>),</span>
+</span></span><span class=line><span class=cl>                    <span class=n>std</span><span class=o>::</span><span class=n>move</span><span class=p>(</span><span class=n>value</span><span class=p>));</span>
+</span></span><span class=line><span class=cl>  <span class=o>++</span><span class=n>size_</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></div><p>Taking <code>value</code> by value and moving it in serves both callers: a temporary is
+moved twice (cheap), an lvalue is copied once, which is unavoidable anyway.</p><p><code>dequeue</code> moves the front element out, <em>destroys</em> what is left in its slot,
+advances <code>begin_</code>, and hands the element to the caller:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-cpp data-lang=cpp><span class=line><span class=cl><span class=k>template</span> <span class=o>&lt;</span><span class=n>std</span><span class=o>::</span><span class=n>movable</span> <span class=n>T</span><span class=o>&gt;</span>
+</span></span><span class=line><span class=cl><span class=k>auto</span> <span class=n>Queue</span><span class=o>&lt;</span><span class=n>T</span><span class=o>&gt;::</span><span class=n>dequeue</span><span class=p>()</span> <span class=o>-&gt;</span> <span class=n>T</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=k>if</span> <span class=p>(</span><span class=n>is_empty</span><span class=p>())</span>
+</span></span><span class=line><span class=cl>    <span class=k>throw</span> <span class=n>std</span><span class=o>::</span><span class=n>runtime_error</span><span class=p>{</span><span class=s>&#34;no element to dequeue&#34;</span><span class=p>};</span>
+</span></span><span class=line><span class=cl>  <span class=n>T</span> <span class=nf>value</span><span class=p>(</span><span class=n>std</span><span class=o>::</span><span class=n>move</span><span class=p>(</span><span class=n>values_</span><span class=p>[</span><span class=n>begin_</span><span class=p>]));</span>
+</span></span><span class=line><span class=cl>  <span class=n>std</span><span class=o>::</span><span class=n>destroy_at</span><span class=p>(</span><span class=n>values_</span> <span class=o>+</span> <span class=n>begin_</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=n>begin_</span> <span class=o>=</span> <span class=n>wrap</span><span class=p>(</span><span class=n>begin_</span> <span class=o>+</span> <span class=mi>1</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>  <span class=o>--</span><span class=n>size_</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=k>return</span> <span class=n>value</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></div><p><code>std::destroy_at</code> is the mirror of <code>std::construct_at</code>: one starts an
+object&rsquo;s lifetime in raw memory, the other ends it and leaves raw memory
+behind. (They are the C++20 spelling of placement <code>new</code> and an explicit
+destructor call, <code>p->~T()</code>, with names that make the pairing obvious.)
+Because we separated allocation from construction, we are now responsible
+for keeping them paired: every slot in <code>[begin, begin + size)</code> (wrapped) holds a live
+object, every other slot is raw memory. That invariant is the whole
+implementation.</p><p>Note that moving from the slot does <em>not</em> end the object&rsquo;s lifetime. A
+moved-from <code>std::string</code> is still a <code>std::string</code> (typically empty), and its
+destructor must still run, which is why the <code>destroy_at</code> stays. What the move
+buys us is that this destruction is cheap: the expensive part (the
+characters, the pointee of a <code>unique_ptr</code>) now belongs to <code>value</code>.</p><p>And <code>value</code> is no longer the queue&rsquo;s problem. It is returned to the caller,
+who owns it from then on. In practice the compiler constructs it directly
+in the caller&rsquo;s variable (<em>named return value optimization</em>), so there is no
+second move. If the caller ignores the result, as in a plain
+<code>queue.dequeue();</code>, the compiler materializes a temporary at the call site
+and destroys it at the end of that statement. Either way, every object is
+destroyed exactly once, and the queue does not need to know which case
+happened.</p><h3 id=why-does-stdqueuepop-return-void-then>Why does <code>std::queue::pop</code> return <code>void</code>, then?</h3><p>The standard library&rsquo;s <code>pop</code> returns nothing, and you are expected to write
+<code>auto x = q.front(); q.pop();</code>. That design predates move semantics. In
+C++98, returning the element meant <em>copying</em> it after it had been removed;
+if that copy threw, the element was gone for good, and the operation could
+not offer the strong exception guarantee.</p><p>With moves, the risk mostly disappears. We move into <code>value</code> <em>before</em>
+touching the queue, so if that move throws, nothing was removed. The
+remaining gap is narrow: the return is not <em>guaranteed</em> to be elided for a
+named variable, so a compiler that skipped the elision would perform a second
+move, after removal, and a throwing move there would lose the element. Real
+compilers elide here, and moves rarely throw. In exchange we get a queue that
+works with move-only types such as <code>std::unique_ptr</code> and a one-step
+<code>auto x = q.dequeue();</code>. Other designs made the same call: Rust&rsquo;s
+<code>pop_front</code>, and concurrent queues, where a separate <code>front()</code> and <code>pop()</code>
+would race against other threads.</p><p><code>front</code> comes in two flavors, as in every standard container: the <code>const</code> one
+reads, the non-<code>const</code> one lets the caller modify the element in place. To
+avoid writing the empty check twice, the non-<code>const</code> version delegates to the
+<code>const</code> one and casts the <code>const</code> away, which is safe because <code>*this</code> is not
+actually <code>const</code>. (C++23&rsquo;s explicit object parameter, &ldquo;deducing <code>this</code>&rdquo;,
+collapses the pair into a single definition; this series sticks to C++20.)
+<code>is_empty</code> is what you would expect:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-cpp data-lang=cpp><span class=line><span class=cl><span class=k>template</span> <span class=o>&lt;</span><span class=n>std</span><span class=o>::</span><span class=n>movable</span> <span class=n>T</span><span class=o>&gt;</span>
+</span></span><span class=line><span class=cl><span class=k>auto</span> <span class=n>Queue</span><span class=o>&lt;</span><span class=n>T</span><span class=o>&gt;::</span><span class=n>front</span><span class=p>()</span> <span class=o>-&gt;</span> <span class=n>T</span><span class=o>&amp;</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=k>return</span> <span class=k>const_cast</span><span class=o>&lt;</span><span class=n>T</span><span class=o>&amp;&gt;</span><span class=p>(</span><span class=n>std</span><span class=o>::</span><span class=n>as_const</span><span class=p>(</span><span class=o>*</span><span class=k>this</span><span class=p>).</span><span class=n>front</span><span class=p>());</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=k>template</span> <span class=o>&lt;</span><span class=n>std</span><span class=o>::</span><span class=n>movable</span> <span class=n>T</span><span class=o>&gt;</span>
+</span></span><span class=line><span class=cl><span class=k>auto</span> <span class=n>Queue</span><span class=o>&lt;</span><span class=n>T</span><span class=o>&gt;::</span><span class=n>front</span><span class=p>()</span> <span class=k>const</span> <span class=o>-&gt;</span> <span class=k>const</span> <span class=n>T</span><span class=o>&amp;</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=k>if</span> <span class=p>(</span><span class=n>is_empty</span><span class=p>())</span>
+</span></span><span class=line><span class=cl>    <span class=k>throw</span> <span class=n>std</span><span class=o>::</span><span class=n>runtime_error</span><span class=p>{</span><span class=s>&#34;empty queue has no front&#34;</span><span class=p>};</span>
+</span></span><span class=line><span class=cl>  <span class=k>return</span> <span class=n>values_</span><span class=p>[</span><span class=n>begin_</span><span class=p>];</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=k>template</span> <span class=o>&lt;</span><span class=n>std</span><span class=o>::</span><span class=n>movable</span> <span class=n>T</span><span class=o>&gt;</span>
+</span></span><span class=line><span class=cl><span class=k>auto</span> <span class=n>Queue</span><span class=o>&lt;</span><span class=n>T</span><span class=o>&gt;::</span><span class=n>is_empty</span><span class=p>()</span> <span class=k>const</span> <span class=k>noexcept</span> <span class=o>-&gt;</span> <span class=kt>bool</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=k>return</span> <span class=n>size_</span> <span class=o>==</span> <span class=mi>0</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></div><h2 id=growing-without-breaking-anything>Growing without breaking anything</h2><p>When the buffer is full, we allocate one twice as large and move the elements
+over, <em>unwrapping</em> them on the way so that the new queue starts at index 0:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-cpp data-lang=cpp><span class=line><span class=cl><span class=k>template</span> <span class=o>&lt;</span><span class=n>std</span><span class=o>::</span><span class=n>movable</span> <span class=n>T</span><span class=o>&gt;</span>
+</span></span><span class=line><span class=cl><span class=kt>void</span> <span class=n>Queue</span><span class=o>&lt;</span><span class=n>T</span><span class=o>&gt;::</span><span class=n>double_capacity</span><span class=p>()</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=k>auto</span> <span class=n>new_capacity</span> <span class=o>=</span> <span class=n>capacity_</span> <span class=o>==</span> <span class=mi>0</span> <span class=o>?</span> <span class=mi>1</span> <span class=o>:</span> <span class=mi>2</span> <span class=o>*</span> <span class=n>capacity_</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=k>auto</span> <span class=n>buffer</span> <span class=o>=</span> <span class=n>alloc_</span><span class=p>.</span><span class=n>allocate</span><span class=p>(</span><span class=n>new_capacity</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=n>std</span><span class=o>::</span><span class=n>size_t</span> <span class=n>i</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=k>try</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=k>for</span> <span class=p>(</span><span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>i</span> <span class=o>&lt;</span> <span class=n>size_</span><span class=p>;</span> <span class=o>++</span><span class=n>i</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>      <span class=n>std</span><span class=o>::</span><span class=n>construct_at</span><span class=p>(</span>
+</span></span><span class=line><span class=cl>        <span class=n>buffer</span> <span class=o>+</span> <span class=n>i</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>        <span class=n>std</span><span class=o>::</span><span class=n>move_if_noexcept</span><span class=p>(</span><span class=n>values_</span><span class=p>[</span><span class=n>wrap</span><span class=p>(</span><span class=n>begin_</span> <span class=o>+</span> <span class=n>i</span><span class=p>)]));</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span> <span class=k>catch</span> <span class=p>(...)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=n>std</span><span class=o>::</span><span class=n>destroy_n</span><span class=p>(</span><span class=n>buffer</span><span class=p>,</span> <span class=n>i</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>    <span class=n>alloc_</span><span class=p>.</span><span class=n>deallocate</span><span class=p>(</span><span class=n>buffer</span><span class=p>,</span> <span class=n>new_capacity</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>    <span class=k>throw</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=k>for</span> <span class=p>(</span><span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>i</span> <span class=o>&lt;</span> <span class=n>size_</span><span class=p>;</span> <span class=o>++</span><span class=n>i</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>    <span class=n>std</span><span class=o>::</span><span class=n>destroy_at</span><span class=p>(</span><span class=n>values_</span> <span class=o>+</span> <span class=n>wrap</span><span class=p>(</span><span class=n>begin_</span> <span class=o>+</span> <span class=n>i</span><span class=p>));</span>
+</span></span><span class=line><span class=cl>  <span class=n>alloc_</span><span class=p>.</span><span class=n>deallocate</span><span class=p>(</span><span class=n>values_</span><span class=p>,</span> <span class=n>capacity_</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=n>begin_</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=n>values_</span> <span class=o>=</span> <span class=n>buffer</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=n>capacity_</span> <span class=o>=</span> <span class=n>new_capacity</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></div><p>Two details make this robust:</p><ul><li><strong>Exception safety.</strong> Constructing an element can throw (copying a
+<code>std::string</code> allocates). If the <em>k</em>-th construction fails, we destroy the
+<em>k</em> objects already built in the new buffer, release it, and rethrow. The
+old buffer was never touched, so the queue is exactly as it was before.</li><li><strong><code>std::move_if_noexcept</code>.</strong> Moving is fast, but if a move can throw
+halfway through, the old elements are already gutted and we cannot roll back.
+<code>move_if_noexcept</code> moves when the move constructor is <code>noexcept</code> and copies
+otherwise, which keeps the rollback above honest. This is the same choice
+<code>std::vector</code> makes when it reallocates.</li></ul><p>Doubling is what makes <code>enqueue</code> <em>amortized</em> constant time: a reallocation
+costs <em>O(n)</em>, but it happens after <em>n</em> cheap insertions, so the average cost
+per insertion stays bounded. The price is memory: right after a resize, up to
+half of the buffer is empty.</p><h2 id=the-destructor>The destructor</h2><div class=highlight><pre tabindex=0 class=chroma><code class=language-cpp data-lang=cpp><span class=line><span class=cl><span class=k>template</span> <span class=o>&lt;</span><span class=n>std</span><span class=o>::</span><span class=n>movable</span> <span class=n>T</span><span class=o>&gt;</span>
+</span></span><span class=line><span class=cl><span class=n>Queue</span><span class=o>&lt;</span><span class=n>T</span><span class=o>&gt;::~</span><span class=n>Queue</span><span class=p>()</span> <span class=k>noexcept</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=k>for</span> <span class=p>(</span><span class=n>std</span><span class=o>::</span><span class=n>size_t</span> <span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>i</span> <span class=o>&lt;</span> <span class=n>size_</span><span class=p>;</span> <span class=o>++</span><span class=n>i</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>    <span class=n>std</span><span class=o>::</span><span class=n>destroy_at</span><span class=p>(</span><span class=n>values_</span> <span class=o>+</span> <span class=n>wrap</span><span class=p>(</span><span class=n>begin_</span> <span class=o>+</span> <span class=n>i</span><span class=p>));</span>
+</span></span><span class=line><span class=cl>  <span class=n>alloc_</span><span class=p>.</span><span class=n>deallocate</span><span class=p>(</span><span class=n>values_</span><span class=p>,</span> <span class=n>capacity_</span><span class=p>);</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></div><p>Destroy the live objects (wrapped, again), then release the memory. Same
+invariant, last time.</p><h2 id=the-bug-that-copying-would-have-caused>The bug that copying would have caused</h2><p>Here is the version without the two <code>= delete</code> lines, and a two-line program:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-cpp data-lang=cpp><span class=line><span class=cl><span class=n>Queue</span><span class=o>&lt;</span><span class=n>std</span><span class=o>::</span><span class=n>string</span><span class=o>&gt;</span> <span class=n>a</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=n>a</span><span class=p>.</span><span class=n>enqueue</span><span class=p>(</span><span class=s>&#34;x&#34;</span><span class=p>);</span>
+</span></span><span class=line><span class=cl><span class=k>auto</span> <span class=n>b</span> <span class=o>=</span> <span class=n>a</span><span class=p>;</span>   <span class=c1>// compiles!
+</span></span></span></code></pre></div><p>The compiler happily generates a copy constructor that copies the four
+members. Now <code>a</code> and <code>b</code> point at the <em>same</em> buffer, and when both go out of
+scope, both destructors destroy the same string and free the same memory.
+Compiled with <code>-fsanitize=address</code>, this program stops immediately:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-text data-lang=text><span class=line><span class=cl>ERROR: AddressSanitizer: heap-use-after-free
+</span></span><span class=line><span class=cl>SUMMARY: AddressSanitizer: heap-use-after-free ... in Queue&lt;std::string&gt;::~Queue()
+</span></span></code></pre></div><p>Without the sanitizer, it may crash, corrupt the heap silently, or appear to
+work. This is the <em>rule of five</em> in action: a class that manages a resource
+in its destructor must decide what copying and moving mean. Deleting the copy
+operations is the simplest correct answer (and, as a side effect, suppresses
+the equally broken implicit move operations). Implementing a real deep copy
+and a pointer-stealing move are good exercises; the second one is short.</p><p>This is also why the tests in collections101 are always built with
+<code>-fsanitize=address,undefined,leak</code>: in hand-written containers, the bugs that
+matter are the ones that do not crash right away.</p><h2 id=linked-or-circular>Linked or circular?</h2><p>Both implementations give <em>O(1)</em> operations. They differ in everything else:</p><table><thead><tr><th></th><th>Linked nodes</th><th>Circular buffer</th></tr></thead><tbody><tr><td><code>enqueue</code></td><td><em>O(1)</em> worst case</td><td><em>O(1)</em> amortized</td></tr><tr><td>Extra memory</td><td>one pointer per element</td><td>up to half the buffer, unused</td></tr><tr><td>Allocations</td><td>one per element</td><td>one per doubling</td></tr><tr><td>Cache locality</td><td>poor (nodes are scattered)</td><td>good (elements are contiguous)</td></tr></tbody></table><p>In practice the circular buffer usually wins, thanks to locality and far fewer
+allocations. The linked version is the one to pick when you need a hard
+worst-case bound on every single <code>enqueue</code> (no occasional <em>O(n)</em> resize).</p><h2 id=exercises>Exercises</h2><ol><li>Since the capacity is always a power of two, <code>i % capacity_</code> can be
+replaced by a bit mask. Write it. Does it make a measurable difference?</li><li>Add <code>size()</code> in constant time. (It is almost free here. Why is it not
+free in the linked version without an extra member?)</li><li>Implement a move constructor and a move assignment for <code>Queue</code>.</li><li>Shrink the buffer when the queue is less than a quarter full. Why a
+quarter and not a half?</li><li>Add <code>clear()</code>, which empties the queue but keeps its capacity.</li></ol><p>The complete implementation and a small test are in
+<a href=https://github.com/verri/collections101 target=_blank rel=noopener>collections101</a>.</p><script src=https://giscus.app/client.js data-repo=verri/verri.github.io data-repo-id="MDEwOlJlcG9zaXRvcnkxMDQ5MDYyMDY=" data-category=General data-category-id=DIC_kwDOBkC93s4C3j6Z data-mapping=pathname data-strict=0 data-reactions-enabled=1 data-emit-metadata=0 data-input-position=top data-theme=light data-lang=en crossorigin=anonymous async></script></div></div><div id=footer class=mb-5><hr><div class="container text-center"><a href=https://github.com/ojroques/hugo-researcher title="Template by Olivier Roques"><small>Template by Olivier Roques</small></a></div></div></body></html>
